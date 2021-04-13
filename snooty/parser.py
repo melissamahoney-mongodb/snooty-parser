@@ -31,6 +31,7 @@ from typing import (
 import docutils.nodes
 import docutils.utils
 import networkx
+import requests
 import watchdog.events
 from typing_extensions import Protocol
 from yaml import safe_load
@@ -39,6 +40,7 @@ from . import gizaparser, n, rstparser, specparser, util
 from .builders import man
 from .cache import Cache
 from .diagnostics import (
+    CannotFetchSharedContent,
     CannotOpenFile,
     Diagnostic,
     DocUtilsParseError,
@@ -74,6 +76,7 @@ from .types import (
 )
 from .util import RST_EXTENSIONS
 
+DEFAULT_CACHE_DIR = Path.home().joinpath(".cache", "snooty")
 NO_CHILDREN = (n.SubstitutionReference,)
 logger = logging.getLogger(__name__)
 
@@ -1193,7 +1196,6 @@ class _Project:
             branch = "current"
 
         self.prefix = [self.config.name, username, branch]
-
         self.pages = PageDatabase(
             lambda: DevhubPostprocessor(self.config, self.targets)
             if self.config.default_domain == "devhub"
@@ -1329,10 +1331,20 @@ class _Project:
         with util.PerformanceLogger.singleton().start("parse rst"):
             try:
                 paths = util.get_files(self.config.source_path, RST_EXTENSIONS)
+                # get the files that aren't in the source_path but are instead in cache
+                morepaths = util.get_files(DEFAULT_CACHE_DIR, RST_EXTENSIONS)
+
                 logger.debug("Processing rst files")
                 results = pool.imap_unordered(partial(parse_rst, self.parser), paths)
+                moreresults = pool.imap_unordered(
+                    partial(parse_rst, self.parser), morepaths
+                )
+
                 for page, diagnostics in results:
                     self._page_updated(page, diagnostics)
+                for page, diagnostics in moreresults:
+                    self._page_updated(page, diagnostics)
+
             finally:
                 # We cannot use the multiprocessing.Pool context manager API due to the following:
                 # https://pytest-cov.readthedocs.io/en/latest/subprocess-support.html#if-you-use-multiprocessing-pool

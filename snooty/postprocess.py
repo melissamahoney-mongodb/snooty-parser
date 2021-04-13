@@ -10,6 +10,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Generic,
     Iterable,
     List,
     MutableSequence,
@@ -44,11 +45,10 @@ from .eventparser import EventParser, FileIdStack
 from .page import Page
 from .target_database import TargetDatabase
 from .types import FileId, ProjectConfig, SerializableType
-from .util import SOURCE_FILE_EXTENSIONS
+from .util import SOURCE_FILE_EXTENSIONS, fast_deep_copy
 
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
-
 
 # XXX: The following two functions should probably be combined at some point
 def get_title_injection_candidate(node: n.Node) -> Optional[n.Parent[n.Node]]:
@@ -259,12 +259,17 @@ class IncludeHandler(Handler):
             assert len(argument_list) > 0
             return argument_list[0].value
 
-        if not isinstance(node, n.Directive) or not node.name == "include":
+        if not isinstance(node, n.Directive) or not node.name in [
+            "include",
+            "sharedinclude",
+        ]:
             return
 
         argument = get_include_argument(node)
         include_slug = clean_slug(argument)
+
         include_fileid = self.slug_fileid_mapping.get(include_slug)
+
         # Some `include` FileIds in the mapping include file extensions (.yaml) and others do not
         # This will likely be resolved by DOCSP-7159 https://jira.mongodb.org/browse/DOCSP-7159
         if include_fileid is None:
@@ -280,6 +285,90 @@ class IncludeHandler(Handler):
         ast = include_page.ast
         assert isinstance(ast, n.Parent)
         deep_copy_children: MutableSequence[n.Node] = [util.fast_deep_copy(ast)]
+
+        def traverse_children(
+            node: n.Node, depth: float = 0, siblings: int = 0
+        ) -> n.Node:
+            """Recursively travel the children of the node and
+            process the SubstitutionReferences as you go"""
+            print("HI THE DEPTH IS: {}".format(depth))
+            print("THE NODE IS: {}".format(node))
+
+            if not hasattr(node, "children") or isinstance(
+                node, n.SubstitutionReference
+            ):
+                print("siblings: {}".format(siblings))
+                if isinstance(node, n.SubstitutionReference):
+                    print("ALSO YES")
+                    if node.name in replacements:
+                        print("ABOUT TO DO REPLACEMENT")
+                        print("Replacement value: {}".format(replacements[node.name]))
+                        print(type(replacements[node.name]))
+                        # TODO: fix the span for all the spasns in here
+                        new_node: MutableSequence[n.Node] = fast_deep_copy(replacements[node.name])
+                        if siblings > 1:
+                            print("PRINTING OUT NEW NODE")
+                            print(new_node[0])
+                            abridged_node : n.Node = new_node[0].children[0]
+                            return abridged_node
+                        else:
+                            return new_node[0]
+                    else:
+                        print("The node.name is not in replacements")
+                        return node
+                else:
+                    print("lowest-level node is not a substitution reference")
+                    return node
+
+            else:
+                # the node has children and is not a substitution reference
+                print("the node is not a substitution reference")
+                print("NODE TYPE: {}".format(node))
+
+                if isinstance(node, n.Parent):
+                    siblings = len(node.children)
+                    childcount: float = 0
+                    # check each child for the same
+                    for child in node.children:
+                        print("pre child {}: {}".format(depth + 1 + childcount, child))
+                        new_child = traverse_children(
+                            child, depth + 1 + childcount, siblings
+                        )
+                        print(
+                            "new child {}: {}".format(depth + 1 + childcount, new_child)
+                        )
+                        print("Printing node.children: {}".format(node.children))
+                        node.children[int(childcount * 10)] = new_child
+                        childcount += 0.1
+
+                print(node)
+                return node
+
+        # Deal with replacements directives now
+        if node.children:
+            ## get the replacement content so we can sub it in as needed
+            replacements: Dict[str, MutableSequence[n.Node]] = {}
+            print("Node is of type: {}".format(type(node)))
+            print(node)
+            for child in node.children:
+                if isinstance(child, n.Directive):
+                    print("Yup, it's a Directive")
+                    print("GETTING REPLACEMENT ARGUMENT")
+                    print(child.argument)
+                    replacement_arg = child.argument[0].value
+                    print("replacement_arg: {}".format(replacement_arg))
+                    print(type(child.children[0]))
+                    replacement_body: MutableSequence[n.Node] = fast_deep_copy(child.children)
+
+                    replacements[replacement_arg] = replacement_body
+            print("THESE ARE THE REPLACEMENTS:")
+            print(replacements)
+
+            print("PRINTING DEEP COPY CHILDREN BEFORE SETTING IT")
+            print(deep_copy_children)
+            deep_copy_children[0] = traverse_children(deep_copy_children[0])
+            print("PRINTING DEEP COPY CHILDREN AFTER SETTING IT")
+            print(deep_copy_children)
 
         # TODO: Move subgraphing implementation into parse layer, where we can
         # ideally take subgraph of the raw RST

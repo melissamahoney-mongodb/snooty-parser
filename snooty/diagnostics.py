@@ -119,6 +119,23 @@ class ExpectedImageArg(Diagnostic):
     severity = Diagnostic.Level.error
 
 
+class ExpectedReplacementArg(Diagnostic):
+    severity = Diagnostic.Level.error
+
+    def __init__(
+        self,
+        name: str,
+        start: Union[int, Tuple[int, int]],
+        end: Union[None, int, Tuple[int, int]] = None,
+    ) -> None:
+        super().__init__(
+            f'"{name}" expected an argument specifying the replacement string',
+            start,
+            end,
+        )
+        self.name = name
+
+
 class ImageSuggested(Diagnostic):
     severity = Diagnostic.Level.info
 
@@ -307,6 +324,23 @@ class UnmarshallingError(Diagnostic):
         end: Union[None, int, Tuple[int, int]] = None,
     ) -> None:
         super().__init__(f"Unmarshalling Error: {reason}", start, end)
+        self.reason = reason
+
+
+class CannotFetchSharedContent(Diagnostic):
+    severity = Diagnostic.Level.error
+
+    def __init__(
+        self,
+        path: str,
+        reason: int,
+        start: Union[int, Tuple[int, int]],
+        end: Union[None, int, Tuple[int, int]] = None,
+    ) -> None:
+        super().__init__(
+            f"Error fetching {str(path)} from Github: {reason}", start, end
+        )
+        self.path = path
         self.reason = reason
 
 
