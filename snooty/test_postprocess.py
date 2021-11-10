@@ -302,10 +302,10 @@ Guides
       :description: The description exists! No errors
 
       .. guide:: /path/to/guide2.txt
-   
+
    .. chapter:: No Guides
       :description: No guides
-    
+
    .. guide:: /path/to/guide3.txt
 
    .. chapter::
@@ -357,12 +357,12 @@ Guides
                 "source/index.txt"
             ): """
 .. chapters::
-   
+
    .. chapter:: Test
       :description: This is a chapter
 
       .. guide:: /path/to/guide1.txt
-  
+
    .. chapter:: Test
       :description: This is a chapter
 
@@ -386,7 +386,7 @@ Guides
       :description: This is a chapter
 
       .. guide:: /path/to/guide1.txt
-   
+
    .. chapter:: Test: The Sequel
       :description: This is another chapter
 
